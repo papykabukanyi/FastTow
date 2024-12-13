@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Box,
   TextField,
@@ -10,6 +10,10 @@ import {
   Divider,
   Alert,
   CircularProgress,
+  Select,
+  MenuItem,
+  InputLabel,
+  FormControl,
 } from '@mui/material';
 import AddCircleIcon from '@mui/icons-material/AddCircle';
 import RemoveCircleIcon from '@mui/icons-material/RemoveCircle';
@@ -26,12 +30,28 @@ const TowTruckForm = () => {
     radius: '',
     zipcode: '',
     pricePerMile: '',
+    gasPricePerGallon: '', // Ensure this field is included
     services: [{ service: '', price: '' }],
     crew: [{ name: '', contact: '' }],
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submissionError, setSubmissionError] = useState('');
   const [submissionSuccess, setSubmissionSuccess] = useState('');
+  const [serviceOptions, setServiceOptions] = useState([]);
+
+  // Fetch service options from the backend
+  useEffect(() => {
+    const fetchServiceOptions = async () => {
+      try {
+        const response = await axios.get('http://localhost:5000/api/services');
+        setServiceOptions(response.data || []);
+      } catch (error) {
+        console.error('Error fetching service options:', error.message);
+        setServiceOptions(['Tire Change', 'Jump Start', 'Towing', 'Fuel Delivery', 'Lockout Service']); // Fallback
+      }
+    };
+    fetchServiceOptions();
+  }, []);
 
   // Handle general input changes
   const handleInputChange = (field, value) => {
@@ -148,6 +168,7 @@ const TowTruckForm = () => {
         radius: '',
         zipcode: '',
         pricePerMile: '',
+        gasPricePerGallon: '',
         services: [{ service: '', price: '' }],
         crew: [{ name: '', contact: '' }],
       });
@@ -163,7 +184,7 @@ const TowTruckForm = () => {
       component={Paper}
       elevation={3}
       p={4}
-      sx={{ maxWidth: 600, mx: 'auto', mt: 4 }}
+      sx={{ maxWidth: 700, mx: 'auto', mt: 4 }}
     >
       <Typography variant="h5" gutterBottom>
         Register Tow Truck
@@ -235,6 +256,15 @@ const TowTruckForm = () => {
           value={form.pricePerMile}
           onChange={(e) => handleInputChange('pricePerMile', e.target.value)}
         />
+        <TextField
+          label="Gas Price Per Gallon"
+          fullWidth
+          margin="normal"
+          required // Add validation if required
+          type="number"
+          value={form.gasPricePerGallon}
+          onChange={(e) => handleInputChange('gasPricePerGallon', e.target.value)}
+        />
 
         {/* Services Section */}
         <Typography variant="h6" sx={{ mt: 3 }}>
@@ -243,13 +273,19 @@ const TowTruckForm = () => {
         {form.services.map((service, index) => (
           <Grid container spacing={2} key={index} alignItems="center">
             <Grid item xs={5}>
-              <TextField
-                label="Service Name"
-                fullWidth
-                required
-                value={service.service}
-                onChange={(e) => handleServiceChange(index, 'service', e.target.value)}
-              />
+              <FormControl fullWidth required>
+                <InputLabel>Service</InputLabel>
+                <Select
+                  value={service.service}
+                  onChange={(e) => handleServiceChange(index, 'service', e.target.value)}
+                >
+                  {serviceOptions.map((option) => (
+                    <MenuItem key={option} value={option}>
+                      {option}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
             </Grid>
             <Grid item xs={5}>
               <TextField
@@ -263,10 +299,7 @@ const TowTruckForm = () => {
             </Grid>
             <Grid item xs={2}>
               {index > 0 && (
-                <IconButton
-                  color="error"
-                  onClick={() => removeServiceField(index)}
-                >
+                <IconButton color="error" onClick={() => removeServiceField(index)}>
                   <RemoveCircleIcon />
                 </IconButton>
               )}
@@ -301,10 +334,7 @@ const TowTruckForm = () => {
             </Grid>
             <Grid item xs={2}>
               {index > 0 && (
-                <IconButton
-                  color="error"
-                  onClick={() => removeCrewField(index)}
-                >
+                <IconButton color="error" onClick={() => removeCrewField(index)}>
                   <RemoveCircleIcon />
                 </IconButton>
               )}

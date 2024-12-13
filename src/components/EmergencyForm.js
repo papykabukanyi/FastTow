@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { useStripe, useElements, CardElement } from '@stripe/react-stripe-js';
 import { useNavigate } from 'react-router-dom';
@@ -11,7 +11,16 @@ import {
   CircularProgress,
   Alert,
   Card,
+  Select,
+  MenuItem,
+  FormControl,
+  InputLabel,
+  IconButton,
+  Grid,
+  Divider,
 } from '@mui/material';
+import AddCircleIcon from '@mui/icons-material/AddCircle';
+import RemoveCircleIcon from '@mui/icons-material/RemoveCircle';
 
 const EmergencyForm = () => {
   const [form, setForm] = useState({
@@ -24,9 +33,11 @@ const EmergencyForm = () => {
       city: '',
       state: '',
       zip: '',
-      country: 'US', // Default to US (ISO Code)
+      country: 'US',
     },
+    serviceNeeded: [''],
   });
+  const [serviceOptions, setServiceOptions] = useState([]);
   const [isLoadingLocation, setIsLoadingLocation] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submissionError, setSubmissionError] = useState('');
@@ -35,19 +46,49 @@ const EmergencyForm = () => {
   const elements = useElements();
   const navigate = useNavigate();
 
+  // Load services dynamically from the backend
+  useEffect(() => {
+    const loadServices = async () => {
+      try {
+        const { data } = await axios.get('http://localhost:5000/api/services');
+        setServiceOptions(data || []);
+      } catch (error) {
+        console.error('Error loading services:', error);
+        setServiceOptions(['Tire Change', 'Jump Start', 'Towing', 'Fuel Delivery', 'Lockout Service']);
+      }
+    };
+    loadServices();
+  }, []);
+
   const captureLocation = () => {
     setIsLoadingLocation(true);
     navigator.geolocation.getCurrentPosition(
       (position) => {
         const { latitude, longitude } = position.coords;
-        setForm({ ...form, location: { latitude, longitude } });
+        setForm((prev) => ({ ...prev, location: { latitude, longitude } }));
         setIsLoadingLocation(false);
       },
-      (error) => {
+      () => {
         alert('Failed to capture location. Please enable location services.');
         setIsLoadingLocation(false);
       }
     );
+  };
+
+  const handleServiceChange = (index, value) => {
+    const updatedServices = [...form.serviceNeeded];
+    updatedServices[index] = value || '';
+    setForm((prev) => ({ ...prev, serviceNeeded: updatedServices }));
+  };
+
+  const addServiceField = () => {
+    setForm((prev) => ({ ...prev, serviceNeeded: [...prev.serviceNeeded, ''] }));
+  };
+
+  const removeServiceField = (index) => {
+    const updatedServices = [...form.serviceNeeded];
+    updatedServices.splice(index, 1);
+    setForm((prev) => ({ ...prev, serviceNeeded: updatedServices }));
   };
 
   const handleSubmit = async (e) => {
@@ -89,10 +130,12 @@ const EmergencyForm = () => {
         paymentMethodId: paymentMethod.id,
       });
 
-      const { emergencyId } = response.data;
+      const { emergencyId, paymentStatus } = response.data;
 
-      // Redirect to confirmation page
-      setSubmissionSuccess('Emergency created successfully.');
+      if (paymentStatus === 'on_hold') {
+        setSubmissionSuccess('Payment on hold. Emergency response is on the way.');
+      }
+
       navigate(`/confirmation?id=${encodeURIComponent(emergencyId)}`);
     } catch (err) {
       setSubmissionError(err.response?.data?.error || err.message);
@@ -129,7 +172,8 @@ const EmergencyForm = () => {
           </Button>
           {form.location && (
             <Typography sx={{ mt: 2 }}>
-              Captured Coordinates: Latitude {form.location.latitude}, Longitude {form.location.longitude}
+              Captured Coordinates: Latitude {form.location.latitude}, Longitude{' '}
+              {form.location.longitude}
             </Typography>
           )}
 
@@ -138,7 +182,7 @@ const EmergencyForm = () => {
             fullWidth
             margin="normal"
             value={form.name}
-            onChange={(e) => setForm({ ...form, name: e.target.value })}
+            onChange={(e) => setForm((prev) => ({ ...prev, name: e.target.value }))}
             required
           />
           <TextField
@@ -147,7 +191,7 @@ const EmergencyForm = () => {
             fullWidth
             margin="normal"
             value={form.email}
-            onChange={(e) => setForm({ ...form, email: e.target.value })}
+            onChange={(e) => setForm((prev) => ({ ...prev, email: e.target.value }))}
             required
           />
           <TextField
@@ -156,10 +200,43 @@ const EmergencyForm = () => {
             fullWidth
             margin="normal"
             value={form.phone}
-            onChange={(e) => setForm({ ...form, phone: e.target.value })}
+            onChange={(e) => setForm((prev) => ({ ...prev, phone: e.target.value }))}
           />
 
-          <Typography variant="h6" gutterBottom>
+          <Typography variant="h6" sx={{ mt: 3 }}>
+            Services Needed
+          </Typography>
+          {form.serviceNeeded.map((service, index) => (
+            <Grid container spacing={2} alignItems="center" key={index}>
+              <Grid item xs={10}>
+                <FormControl fullWidth required>
+                  <InputLabel>Service Needed</InputLabel>
+                  <Select
+                    value={service}
+                    onChange={(e) => handleServiceChange(index, e.target.value)}
+                  >
+                    {serviceOptions.map((option) => (
+                      <MenuItem key={option} value={option}>
+                        {option}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Grid>
+              <Grid item xs={2}>
+                {index > 0 && (
+                  <IconButton color="error" onClick={() => removeServiceField(index)}>
+                    <RemoveCircleIcon />
+                  </IconButton>
+                )}
+              </Grid>
+            </Grid>
+          ))}
+          <Button startIcon={<AddCircleIcon />} onClick={addServiceField} sx={{ mt: 2 }}>
+            Add Additional Service
+          </Button>
+
+          <Typography variant="h6" gutterBottom sx={{ mt: 3 }}>
             Billing Address
           </Typography>
           <TextField
@@ -168,7 +245,10 @@ const EmergencyForm = () => {
             margin="normal"
             value={form.billingAddress.line1}
             onChange={(e) =>
-              setForm({ ...form, billingAddress: { ...form.billingAddress, line1: e.target.value } })
+              setForm((prev) => ({
+                ...prev,
+                billingAddress: { ...prev.billingAddress, line1: e.target.value },
+              }))
             }
             required
           />
@@ -178,7 +258,10 @@ const EmergencyForm = () => {
             margin="normal"
             value={form.billingAddress.city}
             onChange={(e) =>
-              setForm({ ...form, billingAddress: { ...form.billingAddress, city: e.target.value } })
+              setForm((prev) => ({
+                ...prev,
+                billingAddress: { ...prev.billingAddress, city: e.target.value },
+              }))
             }
             required
           />
@@ -188,7 +271,10 @@ const EmergencyForm = () => {
             margin="normal"
             value={form.billingAddress.state}
             onChange={(e) =>
-              setForm({ ...form, billingAddress: { ...form.billingAddress, state: e.target.value } })
+              setForm((prev) => ({
+                ...prev,
+                billingAddress: { ...prev.billingAddress, state: e.target.value },
+              }))
             }
             required
           />
@@ -198,7 +284,10 @@ const EmergencyForm = () => {
             margin="normal"
             value={form.billingAddress.zip}
             onChange={(e) =>
-              setForm({ ...form, billingAddress: { ...form.billingAddress, zip: e.target.value } })
+              setForm((prev) => ({
+                ...prev,
+                billingAddress: { ...prev.billingAddress, zip: e.target.value },
+              }))
             }
             required
           />
@@ -208,7 +297,10 @@ const EmergencyForm = () => {
             margin="normal"
             value={form.billingAddress.country}
             onChange={(e) =>
-              setForm({ ...form, billingAddress: { ...form.billingAddress, country: e.target.value } })
+              setForm((prev) => ({
+                ...prev,
+                billingAddress: { ...prev.billingAddress, country: e.target.value },
+              }))
             }
             required
           />
